@@ -68,7 +68,7 @@ struct output_status_state {
 };
 
 struct layer_status_state {
-    uint8_t index;
+    zmk_keymap_layer_index_t index;
     const char *label;
 };
 
@@ -103,10 +103,9 @@ static bool key_pressed = false;
 static bool key_released = false;
 static bool keys_active = false;
 static bool use_first_frame = true;
-static const lv_img_dsc_t *last_active_frame = &bongo_resting;
+static const lv_image_dsc_t *last_active_frame = &bongo_resting;
 static uint32_t last_key_event = 0;
 static struct k_work_delayable modifier_work;
-static const uint32_t MODIFIER_CHECK_INTERVAL = 20;  // 20ms between checks
 static const uint32_t KEY_DEBOUNCE_INTERVAL = 20;    // 20ms debounce interval
 static bool debounce_check_scheduled = false;        // Flag to track if debounce check is scheduled
 
@@ -140,7 +139,7 @@ LV_IMG_DECLARE(bongo_furiousdown);
 LV_IMG_DECLARE(bongo_inhale);
 LV_IMG_DECLARE(bongo_exhale);
 
-static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+static void draw_top(lv_obj_t *widget, const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, 0);
 
     lv_draw_label_dsc_t label_dsc;
@@ -155,7 +154,7 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     init_line_dsc(&line_dsc, LVGL_FOREGROUND, 1);
 
     // Fill background
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 
     // Draw battery
     draw_battery(canvas, state);
@@ -178,14 +177,16 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
             strcat(output_text, LV_SYMBOL_SETTINGS);
         }
         break;
+    default:
+        break;
     }
 
-    lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
+    canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
 
     // Draw WPM with smaller rectangle
     #if IS_ENABLED(CONFIG_ZMK_WPM_GRAPH_ENABLED)
-    lv_canvas_draw_rect(canvas, 0, 21, 68, 42, &rect_white_dsc);
-    lv_canvas_draw_rect(canvas, 1, 22, 66, 40, &rect_black_dsc);
+    canvas_draw_rect(canvas, 0, 21, 68, 42, &rect_white_dsc);
+    canvas_draw_rect(canvas, 1, 22, 66, 40, &rect_black_dsc);
 
     // Draw BLE profile circle in top left of WPM area
     lv_draw_arc_dsc_t arc_dsc;
@@ -196,18 +197,18 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     init_label_dsc(&label_dsc_black, LVGL_BACKGROUND, &lv_font_montserrat_18, LV_TEXT_ALIGN_CENTER);
 
     int x = 13, y = 34;  // Position circle in top left of WPM area
-    lv_canvas_draw_arc(canvas, x, y, 11, 0, 360, &arc_dsc);
-    lv_canvas_draw_arc(canvas, x, y, 7, 0, 359, &arc_dsc_filled);
+    canvas_draw_arc(canvas, x, y, 11, 0, 360, &arc_dsc);
+    canvas_draw_arc(canvas, x, y, 7, 0, 359, &arc_dsc_filled);
 
     // Draw BLE profile number
     char label[2];
     snprintf(label, sizeof(label), "%" PRIu8, (uint8_t)(state->active_profile_index + 1));
-    lv_canvas_draw_text(canvas, x - 5, y - 10, 10, &label_dsc_black, label);
+    canvas_draw_text(canvas, x - 5, y - 10, 10, &label_dsc_black, label);
 
     // Draw WPM text and graph
     char wpm_text[6] = {};
     snprintf(wpm_text, sizeof(wpm_text), "%d", state->wpm[9]);
-    lv_canvas_draw_text(canvas, 42, 52, 24, &label_dsc_wpm, wpm_text);
+    canvas_draw_text(canvas, 42, 52, 24, &label_dsc_wpm, wpm_text);
 
     // Draw WPM graph
     int max = 0;
@@ -232,7 +233,7 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
         points[i].x = 2 + i * 7;
         points[i].y = 60 - (state->wpm[i] - min) * 36 / range;
     }
-    lv_canvas_draw_line(canvas, points, 10, &line_dsc);
+    canvas_draw_line(canvas, points, 10, &line_dsc);
 
     // Calculate average WPM and update animation state
     int recent_wpm = 0;
@@ -254,10 +255,10 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     #endif
 
     // Rotate canvas
-    rotate_canvas(canvas, cbuf);
+    rotate_canvas(canvas);
 }
 
-static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+static void draw_middle(lv_obj_t *widget, const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, 1);
 
     lv_draw_rect_dsc_t rect_black_dsc;
@@ -268,19 +269,19 @@ static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     init_line_dsc(&line_dsc, LVGL_FOREGROUND, 1);
 
     // Fill background
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 
     // Draw modifiers at the top
     draw_modifiers(canvas, 0, 13);
 
     // Draw bongo cat animation frame
-    lv_canvas_draw_rect(canvas, 0, 28, 68, 38, &rect_black_dsc);
+    canvas_draw_rect(canvas, 0, 28, 68, 38, &rect_black_dsc);
     
-    lv_draw_img_dsc_t img_dsc;
-    lv_draw_img_dsc_init(&img_dsc);
+    lv_draw_image_dsc_t img_dsc;
+    lv_draw_image_dsc_init(&img_dsc);
     
     // Determine which animation frame to use
-    const lv_img_dsc_t *current_frame = &bongo_resting;  // Default to resting frame
+    const lv_image_dsc_t *current_frame = &bongo_resting;  // Default to resting frame
     
     if (current_anim_state == ANIM_STATE_CASUAL) {
         if (key_pressed) {
@@ -354,13 +355,13 @@ static void draw_middle(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     key_released = false;
 
     // Draw the current animation frame
-    lv_canvas_draw_img(canvas, 0, 28, current_frame, &img_dsc);
+    canvas_draw_img(canvas, 0, 28, current_frame, &img_dsc);
 
     // Rotate canvas
-    rotate_canvas(canvas, cbuf);
+    rotate_canvas(canvas);
 }
 
-static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+static void draw_bottom(lv_obj_t *widget, const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, 2);
 
     lv_draw_rect_dsc_t rect_black_dsc;
@@ -368,17 +369,17 @@ static void draw_bottom(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     lv_draw_label_dsc_t label_dsc;
     init_label_dsc(&label_dsc, LVGL_FOREGROUND, &lv_font_montserrat_14, LV_TEXT_ALIGN_CENTER);
 
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    lv_canvas_fill_bg(canvas, LVGL_BACKGROUND, LV_OPA_COVER);
 
-    if (state->layer_label == NULL) {
+    if (state->layer_label == NULL || strlen(state->layer_label) == 0) {
         char text[10] = {};
         sprintf(text, "LAYER %i", state->layer_index);
-        lv_canvas_draw_text(canvas, 0, 8, 68, &label_dsc, text);
+        canvas_draw_text(canvas, 0, 8, 68, &label_dsc, text);
     } else {
-        lv_canvas_draw_text(canvas, 0, 8, 68, &label_dsc, state->layer_label);
+        canvas_draw_text(canvas, 0, 8, 68, &label_dsc, state->layer_label);
     }
 
-    rotate_canvas(canvas, cbuf);
+    rotate_canvas(canvas);
 }
 
 static void set_battery_status(struct zmk_widget_status *widget,
@@ -389,7 +390,7 @@ static void set_battery_status(struct zmk_widget_status *widget,
 
     widget->state.battery = state.level;
 
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    draw_top(widget->obj, &widget->state);
 }
 
 static void battery_status_update_cb(struct battery_status_state state) {
@@ -423,8 +424,8 @@ static void set_output_status(struct zmk_widget_status *widget,
     widget->state.active_profile_connected = state->active_profile_connected;
     widget->state.active_profile_bonded = state->active_profile_bonded;
 
-    draw_top(widget->obj, widget->cbuf, &widget->state);
-    draw_middle(widget->obj, widget->cbuf2, &widget->state);
+    draw_top(widget->obj, &widget->state);
+    draw_middle(widget->obj, &widget->state);
 }
 
 static void output_status_update_cb(struct output_status_state state) {
@@ -434,7 +435,7 @@ static void output_status_update_cb(struct output_status_state state) {
 
 static struct output_status_state output_status_get_state(const zmk_event_t *_eh) {
     return (struct output_status_state){
-        .selected_endpoint = zmk_endpoints_selected(),
+        .selected_endpoint = zmk_endpoint_get_selected(),
         .active_profile_index = zmk_ble_active_profile_index(),
         .active_profile_connected = zmk_ble_active_profile_is_connected(),
         .active_profile_bonded = !zmk_ble_active_profile_is_open(),
@@ -456,7 +457,7 @@ static void set_layer_status(struct zmk_widget_status *widget, struct layer_stat
     widget->state.layer_index = state.index;
     widget->state.layer_label = state.label;
     // Make sure we only draw the bottom section for layer updates
-    draw_bottom(widget->obj, widget->cbuf3, &widget->state);
+    draw_bottom(widget->obj, &widget->state);
 }
 
 static void layer_status_update_cb(struct layer_status_state state) {
@@ -465,8 +466,9 @@ static void layer_status_update_cb(struct layer_status_state state) {
 }
 
 static struct layer_status_state layer_status_get_state(const zmk_event_t *eh) {
-    uint8_t index = zmk_keymap_highest_layer_active();
-    return (struct layer_status_state){.index = index, .label = zmk_keymap_layer_name(index)};
+    zmk_keymap_layer_index_t index = zmk_keymap_highest_layer_active();
+    return (struct layer_status_state){
+        .index = index, .label = zmk_keymap_layer_name(zmk_keymap_layer_index_to_id(index))};
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_status, struct layer_status_state, layer_status_update_cb,
@@ -495,7 +497,7 @@ static void process_keypress_event(bool is_pressed, struct zmk_widget_status *wi
     }
     
     // Only draw the middle section where modifiers and bongo cat live
-    draw_middle(widget->obj, widget->cbuf2, &widget->state);
+    draw_middle(widget->obj, &widget->state);
 }
 
 static void modifier_work_handler(struct k_work *work) {
@@ -512,7 +514,7 @@ static void modifier_work_handler(struct k_work *work) {
                 last_active_frame = &bongo_resting;
                 current_idle_state = IDLE_REST2;  // Start with REST2 so next state will be INHALE
                 last_idle_update = current_time - IDLE_ANIMATION_INTERVAL;  // Force immediate transition
-                draw_middle(widget->obj, widget->cbuf2, &widget->state);
+                draw_middle(widget->obj, &widget->state);
             }
         } else if (keys_active) {
             // Keys are still active, schedule another check
@@ -530,7 +532,7 @@ static void modifier_work_handler(struct k_work *work) {
             for (int i = 0; i < NUM_SYMBOLS; i++) {
                 modifier_symbols[i]->is_active = (mods & modifier_symbols[i]->modifier) != 0;
             }
-            draw_middle(widget->obj, widget->cbuf2, &widget->state);
+            draw_middle(widget->obj, &widget->state);
         }
     }
 }
@@ -584,12 +586,12 @@ static void wpm_status_update_cb(struct wpm_status_state state) {
             }
             
             // Update top display with new WPM data
-            draw_top(widget->obj, widget->cbuf, &widget->state);
+            draw_top(widget->obj, &widget->state);
         }
 
         // Handle animation updates
         if (is_animation_update) {
-            draw_middle(widget->obj, widget->cbuf2, &widget->state);
+            draw_middle(widget->obj, &widget->state);
         }
     }
 }
@@ -608,7 +610,6 @@ struct wpm_status_state wpm_status_get_state(const zmk_event_t *eh) {
     
     const struct zmk_wpm_state_changed *wpm_ev = as_zmk_wpm_state_changed(eh);
     const struct zmk_position_state_changed *pos_ev = as_zmk_position_state_changed(eh);
-    const struct zmk_keycode_state_changed *keycode_ev = as_zmk_keycode_state_changed(eh);
     
     bool is_animation_update = false;
     bool is_key_event = false;
@@ -687,7 +688,7 @@ static void animation_work_handler(struct k_work *work) {
                 }
                 
                 // Redraw WPM section
-                draw_top(widget->obj, widget->cbuf, &widget->state);
+                draw_top(widget->obj, &widget->state);
             }
         }
     }
@@ -737,7 +738,7 @@ static void animation_work_handler(struct k_work *work) {
         if (needs_redraw) {
             struct zmk_widget_status *widget;
             SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-                draw_middle(widget->obj, widget->cbuf2, &widget->state);
+                draw_middle(widget->obj, &widget->state);
             }
         }
     }
@@ -753,15 +754,15 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     
     lv_obj_t *top = lv_canvas_create(widget->obj);
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
     
     lv_obj_t *middle = lv_canvas_create(widget->obj);
     lv_obj_align(middle, LV_ALIGN_TOP_LEFT, 24, 0);
-    lv_canvas_set_buffer(middle, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(middle, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
     
     lv_obj_t *bottom = lv_canvas_create(widget->obj);
     lv_obj_align(bottom, LV_ALIGN_TOP_LEFT, -44, 0);
-    lv_canvas_set_buffer(bottom, widget->cbuf3, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(bottom, widget->cbuf3, CANVAS_SIZE, CANVAS_SIZE, CANVAS_COLOR_FORMAT);
 
     sys_slist_append(&widgets, &widget->node);
     
@@ -783,9 +784,9 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget->state.modifiers = 0;
     
     // Force initial draw of all sections
-    draw_top(widget->obj, widget->cbuf, &widget->state);
-    draw_middle(widget->obj, widget->cbuf2, &widget->state);
-    draw_bottom(widget->obj, widget->cbuf3, &widget->state);
+    draw_top(widget->obj, &widget->state);
+    draw_middle(widget->obj, &widget->state);
+    draw_bottom(widget->obj, &widget->state);
 
     return 0;
 }
