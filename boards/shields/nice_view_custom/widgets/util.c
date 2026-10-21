@@ -65,9 +65,9 @@ static struct modifier_symbol ms_win = {
 };
 
 struct modifier_symbol *modifier_symbols[] = {
-    &ms_control,
-    &ms_alt,
     &ms_win,
+    &ms_alt,
+    &ms_control,
     &ms_shift
 };
 #endif
