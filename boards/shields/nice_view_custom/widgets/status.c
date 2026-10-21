@@ -483,14 +483,14 @@ static void process_keypress_event(bool is_pressed, struct zmk_widget_status *wi
         keys_active = true;
         last_key_event = k_uptime_get_32();
         // Schedule immediate debounce check
-        k_work_schedule(&modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
+        k_work_schedule_for_queue(zmk_display_work_q(), &modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
         debounce_check_scheduled = true;
     } else {
         if (active_keys > 0) active_keys--;
         keys_active = (active_keys > 0);
         last_key_event = k_uptime_get_32();
         // Schedule debounce check after release
-        k_work_schedule(&modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
+        k_work_schedule_for_queue(zmk_display_work_q(), &modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
         debounce_check_scheduled = true;
     }
     
@@ -516,7 +516,7 @@ static void modifier_work_handler(struct k_work *work) {
             }
         } else if (keys_active) {
             // Keys are still active, schedule another check
-            k_work_schedule(&modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
+            k_work_schedule_for_queue(zmk_display_work_q(), &modifier_work, K_MSEC(KEY_DEBOUNCE_INTERVAL));
             debounce_check_scheduled = true;
         }
     }
@@ -744,7 +744,7 @@ static void animation_work_handler(struct k_work *work) {
     
     // Schedule next check
     uint32_t next_check = MIN(WPM_UPDATE_INTERVAL / 4, IDLE_ANIMATION_INTERVAL / 2);
-    k_work_schedule(&animation_work, K_MSEC(next_check));
+    k_work_schedule_for_queue(zmk_display_work_q(), &animation_work, K_MSEC(next_check));
 }
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
@@ -774,7 +774,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     // Initialize animation worker
     k_work_init_delayable(&animation_work, animation_work_handler);
     k_work_init_delayable(&modifier_work, modifier_work_handler);
-    k_work_schedule(&animation_work, K_MSEC(IDLE_ANIMATION_INTERVAL));
+    k_work_schedule_for_queue(zmk_display_work_q(), &animation_work, K_MSEC(IDLE_ANIMATION_INTERVAL));
 
     // Initialize modifier states to inactive (no underlines)
     for (int i = 0; i < NUM_SYMBOLS; i++) {
